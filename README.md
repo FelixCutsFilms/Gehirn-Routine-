@@ -4,3 +4,6 @@
 
 - Fortschritt (Stufen, Serie) wird lokal im Browser gespeichert, Export/Import über die Startseite.
 - Reine statische Dateien, keine Build-Schritte.
+
+## Android-APK
+Bei jedem Push auf `main` baut GitHub Actions automatisch eine APK (Capacitor) und legt sie unter **Releases** ab.
