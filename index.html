@@ -49,7 +49,7 @@ button:active{transform:scale(.97)}
 textarea{width:100%;min-height:200px;border-radius:16px;border:1px solid var(--line);background:var(--card);color:var(--fg);font:inherit;padding:14px;resize:vertical;-webkit-user-select:text;user-select:text}
 .read{font-size:18px;line-height:1.55;-webkit-user-select:text;user-select:text}
 svg .n{stroke:var(--accent)}svg .f{stroke:var(--accent2)}
-svg line,svg polyline{stroke-width:7;stroke-linecap:round;stroke-linejoin:round;fill:none}
+svg line{stroke-linecap:round;fill:none}svg .sh{stroke:var(--fg)}
 .stat{display:flex;gap:10px}.stat>div{flex:1;background:var(--btn);border-radius:14px;padding:10px;text-align:center}
 .stat b{display:block;font-size:24px}
 </style>
@@ -179,64 +179,84 @@ function moveAsk(){
   <div class="grid g2"><button id="y">Ja</button><button class="pri" id="n">Nein</button></div>`);
   $('#y').onclick=next;$('#n').onclick=workout;
 }
-const L={th:40,sh:40,to:52,ua:30,fa:28,hd:11};
+const L={th:40,sh:40,to:50,ua:30,fa:27,hd:13};
+const G=172;
 const dir=a=>{const r=a*Math.PI/180;return[Math.sin(r),Math.cos(r)]};
+const NUM={t:0,s:12,e:14,h:0,k:0,lift:0,dx:0,hx:0,hy:87.5,f1x:3,f1y:0,f2x:-3,f2y:0};
 const norm=p=>{
-  const o={t:0,s:12,e:14,h:0,k:0,lift:0,dx:0,...p};
-  for(const k of['s','e','h','k'])if(o[k+'2']===undefined)o[k+'2']=o[k];
+  const o={...NUM,...p};
+  for(const k of['s','e','h','k'])if(p[k+'2']===undefined)o[k+'2']=o[k];
   return o;
 };
+const mix=(a,b,w)=>{const o={};for(const k in a)o[k]=typeof a[k]==='number'?a[k]+(b[k]-a[k])*w:a[k];return o};
+const add=(a,d,l)=>[a[0]+d[0]*l,a[1]+d[1]*l];
+/* Bein per IK: Fuß bleibt am Boden, Knie zeigt nach vorn */
+function ikLeg(hip,ax,fy){
+  const ay=G-8-fy,m=L.th+L.sh-0.2;let a=[ax,ay],dx=ax-hip[0],dy=ay-hip[1],d=Math.hypot(dx,dy);
+  if(d>m){a=[hip[0]+dx/d*m,hip[1]+dy/d*m];d=m}
+  const ux=(a[0]-hip[0])/d,uy=(a[1]-hip[1])/d,hh=Math.sqrt(Math.max(0,L.th*L.th-d*d/4));
+  let px=-uy,py=ux;if(px<0){px=-px;py=-py}
+  const kn=[hip[0]+(a[0]-hip[0])/2+px*hh,hip[1]+(a[1]-hip[1])/2+py*hh];
+  return{kn,ft:a,heel:[a[0]-3,a[1]+5],toe:[a[0]+13,fy>0?G-3:a[1]+5]};
+}
+function fkLeg(hip,h,k){
+  const kn=add(hip,dir(h),L.th),a=add(kn,dir(h-k),L.sh);
+  return{kn,ft:a,heel:[a[0]-3,a[1]+5],toe:[a[0]+13,a[1]+5]};
+}
 function skel(p){
-  const add=(a,d,l)=>[a[0]+d[0]*l,a[1]+d[1]*l];
-  const hip=[0,0];
+  let hip,l1,l2;
+  if(p.ik){
+    hip=[120+p.hx,G-p.hy];l1=ikLeg(hip,120+p.f1x,p.f1y);l2=ikLeg(hip,120+p.f2x,p.f2y);
+  }else{
+    hip=[0,0];l1=fkLeg(hip,p.h,p.k);l2=fkLeg(hip,p.h2,p.k2);
+    const maxY=Math.max(l1.kn[1],l2.kn[1],l1.ft[1],l2.ft[1]);
+    const anchor=l1.ft[1]>=l2.ft[1]?l1.ft:l2.ft;
+    const ox=120+p.dx-anchor[0],oy=G-8-maxY-p.lift;
+    const mv=q=>[q[0]+ox,q[1]+oy],ml=l=>({kn:mv(l.kn),ft:mv(l.ft),heel:mv(l.heel),toe:mv(l.toe)});
+    hip=mv(hip);l1=ml(l1);l2=ml(l2);
+  }
   const up=[Math.sin(p.t*Math.PI/180),-Math.cos(p.t*Math.PI/180)];
-  const sho=add(hip,up,L.to),hd=add(sho,up,L.hd+7);
-  const leg=(h,k)=>{const kn=add(hip,dir(h),L.th),ft=add(kn,dir(h-k),L.sh),toe=[ft[0]+11,ft[1]];return{kn,ft,toe}};
-  const arm=(s,e)=>{const el=add(sho,dir(s),L.ua),hn=add(el,dir(s+e),L.fa);return{el,hn}};
-  const n={leg:leg(p.h,p.k),arm:arm(p.s,p.e)},f={leg:leg(p.h2,p.k2),arm:arm(p.s2,p.e2)};
-  const all={hip,sho,hd,n,f};
-  // Bodenkontakt: tiefster Punkt von Knien/Füßen -> Boden; x am tiefsten Fuß verankern
-  const pts=[n.leg.kn,n.leg.ft,f.leg.kn,f.leg.ft];
-  const maxY=Math.max(...pts.map(q=>q[1]));
-  const anchor=n.leg.ft[1]>=f.leg.ft[1]?n.leg.ft:f.leg.ft;
-  const ox=120+p.dx-anchor[0],oy=172-maxY-p.lift;
-  const mv=q=>[q[0]+ox,q[1]+oy];
-  return{hip:mv(hip),sho:mv(sho),hd:mv(hd),n:{leg:{kn:mv(n.leg.kn),ft:mv(n.leg.ft),toe:mv(n.leg.toe)},arm:{el:mv(n.arm.el),hn:mv(n.arm.hn)}},f:{leg:{kn:mv(f.leg.kn),ft:mv(f.leg.ft),toe:mv(f.leg.toe)},arm:{el:mv(f.arm.el),hn:mv(f.arm.hn)}}};
+  const sho=add(hip,up,L.to),neck=add(sho,up,8),hd=add(sho,up,L.hd+10);
+  const arm=(s,e)=>{const el=add(sho,dir(s),L.ua);return{el,hn:add(el,dir(s+e),L.fa)}};
+  return{hip,sho,neck,hd,l1,l2,a1:arm(p.s,p.e),a2:arm(p.s2,p.e2)};
 }
 function figSVG(p){
-  const k=skel(norm(p));
-  const ln=(a,b,c)=>`<line class="${c}" x1="${a[0].toFixed(1)}" y1="${a[1].toFixed(1)}" x2="${b[0].toFixed(1)}" y2="${b[1].toFixed(1)}"/>`;
-  const limb=(o,c)=>ln(k.hip,o.leg.kn,c)+ln(o.leg.kn,o.leg.ft,c)+ln(o.leg.ft,o.leg.toe,c);
-  const arm=(o,c)=>ln(k.sho,o.arm.el,c)+ln(o.arm.el,o.arm.hn,c);
-  return`<line x1="10" y1="176" x2="230" y2="176" style="stroke:var(--line);stroke-width:3;stroke-linecap:round"/>`+
-    arm(k.f,'f')+limb(k.f,'f')+ln(k.hip,k.sho,'n')+
-    `<circle cx="${k.hd[0].toFixed(1)}" cy="${k.hd[1].toFixed(1)}" r="${L.hd}" style="fill:var(--card);stroke:var(--accent);stroke-width:6"/>`+
-    limb(k.n,'n')+arm(k.n,'n');
+  const k=skel(norm(p)),f=q=>q[0].toFixed(1),g=q=>q[1].toFixed(1);
+  const ln=(a,b,w,c)=>`<line class="${c}" x1="${f(a)}" y1="${g(a)}" x2="${f(b)}" y2="${g(b)}" style="stroke-width:${w}"/>`;
+  const leg=(l,c)=>ln(k.hip,l.kn,15,c)+ln(l.kn,l.ft,12,c)+ln(l.heel,l.toe,9,'sh');
+  const arm=(a,c,fill)=>ln(k.sho,a.el,11,c)+ln(a.el,a.hn,9,c)+`<circle cx="${f(a.hn)}" cy="${g(a.hn)}" r="5.5" style="fill:${fill}"/>`;
+  const sx=(k.l1.ft[0]+k.l2.ft[0])/2;
+  return`<ellipse cx="${sx.toFixed(1)}" cy="${G+1}" rx="46" ry="4" style="fill:var(--line)"/>`+
+    arm(k.a2,'f','var(--accent2)')+leg(k.l2,'f')+
+    ln(k.hip,k.sho,24,'n')+`<circle cx="${f(k.hip)}" cy="${g(k.hip)}" r="13" style="fill:var(--accent)"/>`+
+    ln(k.sho,k.neck,8,'n')+
+    `<circle cx="${f(k.hd)}" cy="${g(k.hd)}" r="${L.hd}" style="fill:var(--card);stroke:var(--accent);stroke-width:5"/>`+
+    leg(k.l1,'n')+arm(k.a1,'n','var(--accent)');
 }
+const S0={ik:true,hx:0,hy:87.5};
 const EX=[
- {n:'Kniebeugen',d:'Po nach hinten, Rücken gerade, Arme nach vorn.',per:3,A:{},B:{t:35,s:85,h:85,k:100}},
- {n:'Armkreise vorwärts',d:'Große, langsame Kreise aus der Schulter.',per:2.5,fn:ph=>({s:ph*360})},
- {n:'Armkreise rückwärts',d:'Kreise in die andere Richtung, Schultern locker.',per:2.5,fn:ph=>({s:-ph*360})},
- {n:'Hampelmann',d:'Arme hoch, Beine auseinander – locker springen.',per:1.2,A:{},B:{s:170,h:22,h2:-22}},
- {n:'Kniehebelauf',d:'Knie abwechselnd hoch, Arme pumpen mit.',per:0.9,A:{h:100,k:100,s:-40,e:70,s2:50,e2:70},B:{h2:100,k2:100,s2:-40,e2:70,s:50,e:70}},
- {n:'Ausfallschritt',d:'Großer Schritt, hinteres Knie Richtung Boden.',per:3.5,A:{},B:{h:90,k:90,h2:-5,k2:100}},
- {n:'Wadenheben',d:'Auf die Zehenspitzen, kurz halten, absenken.',per:2,A:{},B:{lift:10}},
- {n:'Vorbeuge',d:'Locker nach vorn hängen lassen, Nacken entspannen.',per:4,A:{},B:{t:85,s:8,h:4}},
- {n:'Reckdehnung',d:'Arme lang nach oben strecken, groß machen.',per:4,A:{},B:{s:175,t:-8}},
- {n:'Oberschenkel dehnen',d:'Ferse Richtung Po ziehen, Knie zeigt nach unten.',per:4,A:{},B:{h2:-12,k2:140,s2:-35,t:-3}},
- {n:'Waden dehnen',d:'Hinteres Bein gestreckt, Ferse bleibt am Boden.',per:5,A:{},B:{t:25,s:85,h:40,k:50,h2:-32,k2:0}},
+ {n:'Kniebeugen',d:'Po nach hinten, Rücken gerade, Arme nach vorn.',per:4,K:[S0,{ik:true,hx:-24,hy:50,t:38,s:85,e:5},{ik:true,hx:-24,hy:50,t:38,s:85,e:5},S0]},
+ {n:'Armkreise vorwärts',d:'Große, langsame Kreise aus der Schulter.',per:2.5,fn:ph=>({s:ph*360,e:0})},
+ {n:'Armkreise rückwärts',d:'Kreise in die andere Richtung, Schultern locker.',per:2.5,fn:ph=>({s:-ph*360,e:0})},
+ {n:'Hampelmann',d:'Arme hoch, Beine auseinander – locker springen.',per:1.2,K:[{},{s:170,e:0,h:22,h2:-22,lift:7}]},
+ {n:'Kniehebelauf',d:'Knie abwechselnd hoch, Arme pumpen mit.',per:1,K:[{h:95,k:100,s:-40,e:70,s2:50,e2:70,lift:3},{h2:95,k2:100,s2:-40,e2:70,s:50,e:70,lift:3}]},
+ {n:'Ausfallschritt',d:'Großer Schritt, hinteres Knie Richtung Boden.',per:4,K:[{ik:true,hx:0,hy:78,f1x:34,f2x:-34,s:-25,e:115},{ik:true,hx:3,hy:46,f1x:34,f2x:-34,f2y:12,s:-25,e:115},{ik:true,hx:3,hy:46,f1x:34,f2x:-34,f2y:12,s:-25,e:115},{ik:true,hx:0,hy:78,f1x:34,f2x:-34,s:-25,e:115}]},
+ {n:'Wadenheben',d:'Auf die Zehenspitzen, kurz halten, absenken.',per:3,K:[S0,{ik:true,hx:0,hy:101.5,f1y:14,f2y:14},{ik:true,hx:0,hy:101.5,f1y:14,f2y:14},S0]},
+ {n:'Vorbeuge',d:'Locker nach vorn hängen lassen, Nacken entspannen.',per:5,K:[S0,{ik:true,hx:-16,hy:83,t:84,s:4,e:0},{ik:true,hx:-16,hy:83,t:84,s:4,e:0},S0]},
+ {n:'Reckdehnung',d:'Arme lang nach oben strecken, groß machen.',per:5,K:[{},{s:175,e:0,t:-8},{s:175,e:0,t:-8},{}]},
+ {n:'Oberschenkel dehnen',d:'Ferse Richtung Po ziehen, Knie zeigt nach unten.',per:5,K:[{},{h2:-12,k2:140,s2:-35,t:-3},{h2:-12,k2:140,s2:-35,t:-3},{}]},
+ {n:'Waden dehnen',d:'Hinteres Bein gestreckt, Ferse bleibt am Boden.',per:6,K:[{ik:true,hx:0,hy:75,f1x:38,f2x:-38},{ik:true,hx:23,hy:60,f1x:38,f2x:-38,t:22,s:88,e:0},{ik:true,hx:23,hy:60,f1x:38,f2x:-38,t:22,s:88,e:0},{ik:true,hx:0,hy:75,f1x:38,f2x:-38}]},
  {n:'Rumpfkreisen',d:'Hände in die Hüften, Oberkörper sanft kreisen.',per:3,fn:ph=>({t:30*Math.cos(ph*2*Math.PI),s:-30,e:110})},
- {n:'Schattenboxen',d:'Abwechselnd schnelle Schläge nach vorn.',per:0.8,A:{s:90,e:0,s2:30,e2:120,h:15,k:25,h2:-15,k2:25,t:5},B:{s2:90,e2:0,s:30,e:120,h:15,k:25,h2:-15,k2:25,t:5}},
- {n:'Fersenkicks',d:'Abwechselnd die Ferse zum Po schnellen.',per:1,A:{h:-8,k:135,s:40,e:70,s2:-40,e2:70},B:{h2:-8,k2:135,s2:40,e2:70,s:-40,e:70}},
- {n:'Marschieren',d:'Auf der Stelle marschieren, Knie hoch.',per:1.2,A:{h:80,k:80,s:-35,e:20,s2:40,e2:20},B:{h2:80,k2:80,s2:-35,e2:20,s:40,e:20}},
- {n:'Standwaage',d:'Oberkörper kippt vor, ein Bein nach hinten.',per:4,A:{},B:{t:70,h2:-95,k2:0,s:160,s2:160}},
- {n:'Brust öffnen',d:'Arme nach hinten ziehen, Brust raus.',per:4,A:{},B:{s:-70,t:-5}}
+ {n:'Schattenboxen',d:'Abwechselnd schnelle Schläge nach vorn.',per:0.9,K:[{s:90,e:0,s2:30,e2:120,h:15,k:25,h2:-15,k2:25,t:5},{s2:90,e2:0,s:30,e:120,h:15,k:25,h2:-15,k2:25,t:5}]},
+ {n:'Fersenkicks',d:'Abwechselnd die Ferse zum Po schnellen.',per:1.1,K:[{h:-8,k:135,s:40,e:70,s2:-40,e2:70,lift:2},{h2:-8,k2:135,s2:40,e2:70,s:-40,e:70,lift:2}]},
+ {n:'Marschieren',d:'Auf der Stelle marschieren, Knie hoch.',per:1.4,K:[{h:80,k:80,s:-35,e:20,s2:40,e2:20},{h2:80,k2:80,s2:-35,e2:20,s:40,e:20}]},
+ {n:'Standwaage',d:'Oberkörper kippt vor, ein Bein nach hinten.',per:6,K:[{},{t:70,h2:-95,k2:0,s:160,s2:160},{t:70,h2:-95,k2:0,s:160,s2:160},{}]},
+ {n:'Brust öffnen',d:'Arme nach hinten ziehen, Brust raus.',per:5,K:[{},{s:-70,e:0,t:-5},{s:-70,e:0,t:-5},{}]}
 ];
 function poseAt(ex,ph){
   if(ex.fn)return ex.fn(ph);
-  const a=norm(ex.A),b=norm(ex.B),w=(1-Math.cos(ph*2*Math.PI))/2,o={};
-  for(const k in a)o[k]=a[k]+(b[k]-a[k])*w;
-  return o;
+  const K=ex.K.map(norm),n=K.length,x=(ph%1)*n,i=Math.floor(x),f=x-i;
+  return mix(K[i],K[(i+1)%n],(1-Math.cos(Math.PI*f))/2);
 }
 function workout(){
   const exs=shuf(EX).slice(0,6);let i=0;
@@ -244,7 +264,7 @@ function workout(){
     if(i>=6)return next();
     const ex=exs[i],nx=exs[i+1];
     head(`Übung ${i+1}/6`,'');vib(40);
-    render(`<div class="card" style="text-align:center"><svg id="fig" viewBox="0 0 240 190" style="width:100%;max-height:40vh"></svg><h2>${ex.n}</h2><p class="hint">${ex.d}</p></div>
+    render(`<div class="card" style="text-align:center"><svg id="fig" viewBox="0 -16 240 206" style="width:100%;max-height:40vh"></svg><h2>${ex.n}</h2><p class="hint">${ex.d}</p></div>
     <p class="hint" style="text-align:center">${nx?'Danach: '+nx.n:'Letzte Übung!'}</p>`);
     const svg=$('#fig'),t0=performance.now();let raf;
     const loop=t=>{svg.innerHTML=figSVG(poseAt(ex,(((t-t0)/1000)/ex.per)%1));raf=requestAnimationFrame(loop)};
@@ -357,7 +377,9 @@ function keypad(c,onSubmit){
 
 /* ---------- Die 11 Aufgaben ---------- */
 const COL=[['Rot','#e5484d'],['Blau','#3e63dd'],['Grün','#30a46c'],['Gelb','#d49a00'],['Lila','#8e4ec6'],['Orange','#f76b15']];
-const WORDS=['Berg','Mond','Wald','Dach','Apfel','Birne','Wiese','Nebel','Regen','Sonne','Stern','Insel','Tisch','Wolke','Lampe','Kerze','Radio','Garten','Planet','Wasser','Feuer','Strand','Hafen','Schiff','Flügel','Gabel','Messer','Löffel','Tasse','Kissen','Decke','Schrank','Treppe','Balkon','Mauer','Fenster','Brücke','Schule','Zucker','Kuchen','Sommer','Winter','Spiegel','Teller','Gitarre','Klavier','Trommel','Bürste','Schmetterling','Lokomotive','Fahrrad','Kaktus','Delfin','Schokolade'];
+/* Weitere gültige Wörter aus denselben Buchstaben (aus einer deutschen Wortliste berechnet) */
+const ALTS={"BERG":["GERB"],"WALD":["WADL"],"BIRNE":["BREIN","ERBIN"],"WIESE":["WEISE"],"NEBEL":["ELBEN","LEBEN","NEBLE"],"REGEN":["ENGER","GENRE","GEREN","GERNE","GREEN","NEGER","REGNE"],"SONNE":["NEONS","SENON"],"STERN":["ERNST"],"INSEL":["LEINS","LENIS","LIENS","LINSE","SENIL","SILEN"],"TISCH":["SICHT","STICH"],"LAMPE":["AMPEL","PALME"],"RADIO":["ADRIO"],"GARTEN":["ANREGT","GANTER","GERANT","GRATEN","RAGTEN","TAGNER","TRAGEN"],"PLANET":["ALPTEN","PALTEN","PLANTE"],"WASSER":["WASSRE"],"FEUER":["FEURE","FREUE","UFERE"],"HAFEN":["FAHNE","HANFE"],"FLÜGEL":["FLÜGLE"],"GABEL":["ABLEG","BAGEL","BALGE","BELAG","BLAGE","GABLE"],"MESSER":["EMSERS","ERMESS"],"LÖFFEL":["LÖFFLE"],"TASSE":["ASSET","ASTES","STASE"],"BALKON":["BLANKO"],"MAUER":["MAURE","RAUEM","RAUME"],"FENSTER":["FERNSTE"],"BRÜCKE":["BERÜCK"],"SCHULE":["LUCHES","LUCHSE","LUSCHE"],"ZUCKER":["ZUCKRE"],"KUCHEN":["HUCKEN"],"WINTER":["WINTRE","WIRTEN"],"SPIEGEL":["SPIEGLE"],"TELLER":["TELLRE"],"GITARRE":["ARTIGER","TRAGIER"],"TROMMEL":["TROMMLE"],"BÜRSTE":["BRÜSTE","STRÜBE","STÜBER","STÜRBE","TRÜBES"],"DELFIN":["FIDELN"]};
+const WORDS=['Berg','Mond','Wald','Dach','Apfel','Birne','Wiese','Nebel','Regen','Sonne','Stern','Insel','Tisch','Wolke','Lampe','Kerze','Radio','Garten','Planet','Wasser','Feuer','Strand','Hafen','Schiff','Flügel','Gabel','Messer','Löffel','Tasse','Kissen','Decke','Schrank','Treppe','Balkon','Mauer','Fenster','Brücke','Schule','Zucker','Kuchen','Sommer','Winter','Spiegel','Teller','Gitarre','Klavier','Trommel','Bürste','Fahrrad','Kaktus','Delfin'];
 
 function seqGen(l){
   const P=['add','mul','alt','sq','fib','tri'],kind=pick(P.slice(0,Math.min(6,1+Math.floor(l/1.5)))),t=[];
@@ -388,7 +410,7 @@ const TASKS=[
  trial(c,l){
   const sw=Math.random()<Math.min(.7,.45+l*.03),r=c.s.r===undefined?rnd(0,1):(sw?1-c.s.r:c.s.r);c.s.r=r;
   const n=pick([1,2,3,4,6,7,8,9]);
-  const R=[{col:'#3e63dd',q:'Gerade oder ungerade?',lab:['Ungerade','Gerade'],a:n%2},{col:'#f76b15',q:'Kleiner oder größer als 5?',lab:['Kleiner','Größer'],a:n>5?1:0}][r];
+  const R=[{col:'#3e63dd',q:'Gerade oder ungerade?',lab:['Ungerade','Gerade'],a:n%2===0?1:0},{col:'#f76b15',q:'Kleiner oder größer als 5?',lab:['Kleiner','Größer'],a:n>5?1:0}][r];
   c.el.innerHTML=`<p class="hint">${R.q}</p><div class="big" style="border:6px solid ${R.col};border-radius:24px;padding:18px 0;">${n}</div>`;
   btns(c,R.lab,R.a);
  }},
@@ -397,7 +419,8 @@ const TASKS=[
   const n=1+Math.min(2,Math.floor(l/3)),h=c.s.h=c.s.h||[],A='BCDFGKLMNPRSTZ';let ch;
   if(h.length>=n&&Math.random()<.35)ch=h[h.length-n];
   else do{ch=pick(A)}while(h.length>=n&&ch===h[h.length-n]);
-  const m=h.length>=n&&ch===h[h.length-n];h.push(ch);
+  const m=h.length>=n&&ch===h[h.length-n],warm=h.length<n;h.push(ch);
+  if(warm){c.el.innerHTML=`<p class="hint">Merke dir den Buchstaben …</p><div class="big">${ch}</div>`;c.later(()=>{c.next()},1100);return}
   c.el.innerHTML=`<p class="hint">Gleich wie vor ${n} Schritt${n>1?'en':''}?</p><div class="big">${ch}</div>`;
   btns(c,['Gleich','Anders'],m?0:1);
  }},
@@ -471,7 +494,7 @@ const TASKS=[
  }},
 {id:'anagram',cat:'lang',name:'Anagramme',desc:'Bringe die durcheinandergeratenen Buchstaben in die richtige Reihenfolge.',
  trial(c,l){
-  const lo=l<2?4:l<5?5:6,hi=l<2?5:l<5?6:14;
+  const lo=l<2?4:l<5?5:6,hi=l<2?5:l<5?6:9;
   let pool=WORDS.filter(w=>w.length>=lo&&w.length<=hi);if(!pool.length)pool=WORDS;
   const w=pick(pool).toUpperCase();let sc;do{sc=shuf(w)}while(sc.join('')===w);
   const used=[];
@@ -483,7 +506,7 @@ const TASKS=[
     c.el.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{
       if(c.locked)return;used.push(+b.dataset.p);
       if(used.length===w.length){
-        const good=used.map(i=>sc[i]).join('')===w;draw();
+        const str=used.map(i=>sc[i]).join(''),good=str===w||(ALTS[w]||[]).includes(str);draw();
         if(!good)c.el.querySelector('#hn').textContent='Gesucht war: '+w;
         c.answer(good);
       }else draw();
