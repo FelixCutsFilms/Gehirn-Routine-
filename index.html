@@ -76,7 +76,7 @@ const mmss=s=>{s=Math.max(0,Math.ceil(s));return Math.floor(s/60)+':'+String(s%6
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ---------- Ablauf-Infrastruktur ---------- */
-let cleanups=[],plan=[],idx=0,PDUR=[],results=[],session={};
+let cleanups=[],plan=[],idx=0,PDUR=[],results=[],session={},runId=0;
 function reset(){cleanups.forEach(f=>{try{f()}catch(e){}});cleanups=[]}
 function render(html){reset();$('#main').innerHTML=html;window.scrollTo(0,0)}
 function head(label,t){$('#phase').textContent=label;$('#timer').textContent=t==null?'':t}
@@ -123,7 +123,7 @@ function streak(){
 
 /* ---------- Home ---------- */
 function home(){
-  reset();$('#x').hidden=true;head('Gehirn Routine','');$('#bar i').style.width='0';
+  runId++;reset();$('#x').hidden=true;head('Gehirn Routine','');$('#bar i').style.width='0';
   const rows=TASKS.map(t=>`<div class="lv"><span>${t.name}</span><span class="dots">${Array.from({length:6},(_,i)=>`<i class="${i<=Math.min(5,lvOf(t.id)/2|0)&&(lvOf(t.id)>0||i==0)?'on':''}"></i>`).join('')}<small class="hint"> Stufe ${lvOf(t.id)+1}</small></span></div>`).join('');
   $('#main').innerHTML=`
   <div class="card"><h1>🧠 Gehirn-Aktivierung</h1>
@@ -167,7 +167,7 @@ function startRoutine(quick){
   const ts=pickTasks().map(T=>({k:'task',T}));
   plan=quick?[...ts,{k:'end'}]:[{k:'move'},{k:'read'},...ts,{k:'recall'},{k:'end'}];
   PDUR=plan.map(p=>({move:180,read:180,task:75,recall:180,end:1})[p.k]);
-  idx=0;results=[];session={};
+  idx=0;results=[];session={};runId++;
   try{navigator.wakeLock&&navigator.wakeLock.request('screen').catch(()=>{})}catch(e){}
   go();
 }
@@ -258,17 +258,38 @@ function poseAt(ex,ph){
   const K=ex.K.map(norm),n=K.length,x=(ph%1)*n,i=Math.floor(x),f=x-i;
   return mix(K[i],K[(i+1)%n],(1-Math.cos(Math.PI*f))/2);
 }
-function workout(){
-  const exs=shuf(EX).slice(0,6);let i=0;
+/* Übungs-GIFs: werden zur Laufzeit von jsDelivr geladen (Datensatz hasaneyldrm/exercises-dataset, Inhalte von ExerciseDB/Gym visual).
+   Sie sind nicht in diesem Repo enthalten. Ohne Internet springt die gezeichnete Figur ein. */
+const MEDIA_BASE='https://cdn.jsdelivr.net/gh/hasaneyldrm/exercises-dataset@7455efae41b330c265e7cd4b78dfa848e7ce5ebd/videos/';
+const GEX=[{"n":"Bergsteiger","d":"Stützposition, Knie abwechselnd schnell zur Brust ziehen.","g":"0630-RJgzwny.gif","t":"c"},{"n":"Hampelmann","d":"Mit Armen und Beinen auseinander und wieder zusammen springen.","g":"3224-1g5bPpA.gif","t":"c"},{"n":"Sternsprung","d":"Aus der Hocke hochspringen, Arme und Beine weit strecken.","g":"3223-HtfCpfi.gif","t":"c"},{"n":"Kniehebelauf an der Wand","d":"Hände an die Wand, Knie abwechselnd schnell hochziehen.","g":"3636-ealLwvX.gif","t":"c"},{"n":"Laufen auf der Stelle","d":"Auf der Stelle laufen, Arme locker mitschwingen.","g":"0685-oLrKqDH.gif","t":"c"},{"n":"Skischritt","d":"Arme und Beine gegengleich vor- und zurückschwingen.","g":"3671-5MRH8H2.gif","t":"c"},{"n":"Schritt vor und zurück","d":"Abwechselnd einen Schritt vor und zurück, Arme schwingen mit.","g":"3672-fNGumX0.gif","t":"c"},{"n":"Ausfallschritte gehend","d":"Großer Schritt nach vorn, tief absenken, dann der nächste Schritt.","g":"1460-IZVHb27.gif","t":"k"},{"n":"Ausfallschritt vor","d":"Schritt nach vorn, hinteres Knie Richtung Boden, zurück.","g":"3470-kMzUs9Y.gif","t":"k"},{"n":"Kniebeuge mit Armen hoch","d":"Tief in die Hocke, beim Aufrichten die Arme nach oben strecken.","g":"1685-QChZi3x.gif","t":"k"},{"n":"Kniebeuge mit Drehung","d":"Kniebeuge, beim Aufstehen Arme hoch und Oberkörper aufdrehen.","g":"1686-5BZHW9s.gif","t":"k"},{"n":"Ausfallschritt mit Drehung","d":"Im Ausfallschritt den Oberkörper zum vorderen Bein aufdrehen.","g":"1688-K9VL0Jq.gif","t":"k"},{"n":"Knicks-Kniebeuge","d":"Ein Bein hinter dem anderen kreuzen und in die Knie gehen.","g":"3769-gUjqdei.gif","t":"k"},{"n":"Wadenheben","d":"Auf die Zehenspitzen heben, kurz halten, langsam absenken.","g":"1373-bJYHBIN.gif","t":"k"},{"n":"Sprung-Kniebeuge","d":"Tief in die Hocke, dann kräftig nach oben abspringen.","g":"0514-LIlE5Tn.gif","t":"k"},{"n":"Größte Dehnung der Welt","d":"Ausfallschritt, Hand zum Boden, Oberkörper aufdrehen, Arm nach oben.","g":"1604-DFGXwZr.gif","t":"d"},{"n":"Brust dynamisch dehnen","d":"Arme weit öffnen und wieder nach vorn schwingen.","g":"1167-3uj0Ozg.gif","t":"d"},{"n":"Läufer-Dehnung","d":"Ein Bein nach vorn, Hüfte nach unten schieben und halten.","g":"1585-0mB6wHO.gif","t":"d"},{"n":"Wadendehnung im Stand","d":"Ein Bein nach hinten, Ferse am Boden, nach vorn lehnen.","g":"1398-qOKcgVP.gif","t":"d"},{"n":"Wadendehnung an der Wand","d":"Hände an die Wand, hinteres Bein gestreckt, Ferse am Boden.","g":"1377-m0tCHqc.gif","t":"d"},{"n":"Seitliche Dehnung","d":"Ein Arm über den Kopf, Oberkörper zur Seite neigen.","g":"0794-1jXLYEw.gif","t":"d"},{"n":"Kreisende Zehenberührung","d":"Beine weit, mit den Händen in großen Kreisen zu den Füßen.","g":"3214-RtyAsy1.gif","t":"d"},{"n":"Zehenberührung seitlich","d":"Beine weit, abwechselnd mit der Hand den Fuß der Gegenseite berühren.","g":"3213-WCAvOfC.gif","t":"d"},{"n":"Schritt zurück, Arme hoch","d":"Schritt nach hinten, Arme über den Kopf strecken.","g":"1687-ErqK3UL.gif","t":"d"},{"n":"Trizeps dehnen","d":"Ellbogen hinter den Kopf, mit der anderen Hand sanft ziehen.","g":"0817-uOV3Itw.gif","t":"d"},{"n":"Nacken dehnen","d":"Kopf langsam zur Seite neigen, Schultern locker.","g":"1403-x2chWLO.gif","t":"d"},{"n":"Beinrückseite dehnen","d":"Ein Bein gestreckt, Oberkörper gerade nach vorn neigen.","g":"1511-99rWm7w.gif","t":"d"}];
+const probe=g=>new Promise(r=>{const im=new Image(),t=setTimeout(()=>r(false),7000);im.onload=()=>{clearTimeout(t);r(true)};im.onerror=()=>{clearTimeout(t);r(false)};im.src=MEDIA_BASE+g});
+async function workout(){
+  const rid=runId;
+  head('Bewegung','');
+  render(`<div class="card"><h3>Lade Übungen …</h3></div>`);
+  const part=t=>shuf(GEX.filter(e=>e.t===t));
+  let exs=[...part('c').slice(0,2),...part('k').slice(0,2),...part('d').slice(0,2)],online=await probe(exs[0].g);
+  if(rid!==runId)return;
+  if(!online)exs=shuf(EX).slice(0,6);
+  const FALL={c:'Marschieren',k:'Kniebeugen',d:'Reckdehnung'};let i=0;
   const show=()=>{
     if(i>=6)return next();
     const ex=exs[i],nx=exs[i+1];
     head(`Übung ${i+1}/6`,'');vib(40);
-    render(`<div class="card" style="text-align:center"><svg id="fig" viewBox="0 -16 240 206" style="width:100%;max-height:40vh"></svg><h2>${ex.n}</h2><p class="hint">${ex.d}</p></div>
+    render(`<div class="card" style="text-align:center"><div id="fw" style="min-height:200px;display:flex;align-items:center;justify-content:center"></div><h2>${ex.n}</h2><p class="hint">${ex.d}</p>${ex.g?'<p class="hint" style="font-size:11px">Animationen: ExerciseDB</p>':''}</div>
     <p class="hint" style="text-align:center">${nx?'Danach: '+nx.n:'Letzte Übung!'}</p>`);
-    const svg=$('#fig'),t0=performance.now();let raf;
-    const loop=t=>{svg.innerHTML=figSVG(poseAt(ex,(((t-t0)/1000)/ex.per)%1));raf=requestAnimationFrame(loop)};
-    raf=requestAnimationFrame(loop);cleanups.push(()=>cancelAnimationFrame(raf));
+    const fw=$('#fw');
+    const fig=e=>{
+      fw.innerHTML='<svg viewBox="0 -16 240 206" style="width:100%;max-height:40vh"></svg>';
+      const svg=fw.firstChild,t0=performance.now();let raf;
+      const loop=t=>{svg.innerHTML=figSVG(poseAt(e,(((t-t0)/1000)/e.per)%1));raf=requestAnimationFrame(loop)};
+      raf=requestAnimationFrame(loop);cleanups.push(()=>cancelAnimationFrame(raf));
+    };
+    if(ex.g){
+      const img=new Image();img.alt=ex.n;img.style.cssText='max-width:100%;max-height:40vh;border-radius:12px;background:#fff';
+      img.onerror=()=>fig(EX.find(e=>e.n===FALL[ex.t]));img.src=MEDIA_BASE+ex.g;fw.appendChild(img);
+      if(nx&&nx.g)new Image().src=MEDIA_BASE+nx.g;
+    }else fig(ex);
     tick(30,()=>{i++;show()},i/6,1/6);
   };
   show();
@@ -298,8 +319,8 @@ async function getArticle(){
 async function readPhase(){
   head('Lesen','');progress(0);
   render(`<div class="card"><h3>Lade Artikel …</h3></div>`);
-  const art=await getArticle();
-  if(plan[idx].k!=='read')return;
+  const rid=runId,art=await getArticle();
+  if(rid!==runId)return;
   session.art=art;
   render(`<div class="card"><span class="hint">${art.src}</span><h2>${esc(art.title)}</h2><p class="read">${esc(art.text)}</p></div>
   <p class="hint">Lies aufmerksam. Nach den Aufgaben schreibst du auf, was du behalten hast.</p>
