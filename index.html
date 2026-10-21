@@ -127,10 +127,10 @@ function home(){
   const rows=TASKS.map(t=>`<div class="lv"><span>${t.name}</span><span class="dots">${Array.from({length:6},(_,i)=>`<i class="${i<=Math.min(5,lvOf(t.id)/2|0)&&(lvOf(t.id)>0||i==0)?'on':''}"></i>`).join('')}<small class="hint"> Stufe ${lvOf(t.id)+1}</small></span></div>`).join('');
   $('#main').innerHTML=`
   <div class="card"><h1>🧠 Gehirn-Aktivierung</h1>
-    <p class="hint">15 Minuten: Bewegung → Lesen → 4 Denkaufgaben → Abruf</p></div>
+    <p class="hint">15 Minuten: Bewegung → Lesen → 5 Denkaufgaben → Abruf</p></div>
   <div class="stat"><div><b>${streak()}</b><span class="hint">Tage in Folge</span></div><div><b>${store.get('sessions',0)}</b><span class="hint">Durchläufe</span></div></div>
   <button class="pri" id="full">Routine starten (15 Min)</button>
-  <button id="quick">Nur Denkaufgaben (5 Min)</button>
+  <button id="quick">Nur Denkaufgaben (4 Min)</button>
   <div class="card"><h3>Deine Stufen</h3>${rows}</div>
   <div class="card"><h3>Daten sichern</h3><p class="hint">Exportiere deinen Stand als Datei und lade ihn auf einem anderen Gerät wieder ein.</p>
   <div class="grid g2"><button id="exp">Exportieren</button><button id="imp">Importieren</button></div><input id="impf" type="file" accept="application/json,.json" hidden></div>`;
@@ -160,13 +160,13 @@ function importData(f){
 function pickTasks(){
   const by=c=>shuf(TASKS.filter(t=>t.cat===c));
   const a=by('control')[0],b=by('memory')[0],c=by('math')[0];
-  const rest=shuf(TASKS.filter(t=>![a,b,c].includes(t)))[0];
-  return shuf([a,b,c,rest]);
+  const rest=shuf(TASKS.filter(t=>![a,b,c].includes(t))).slice(0,2);
+  return shuf([a,b,c,...rest]);
 }
 function startRoutine(quick){
   const ts=pickTasks().map(T=>({k:'task',T}));
   plan=quick?[...ts,{k:'end'}]:[{k:'move'},{k:'read'},...ts,{k:'recall'},{k:'end'}];
-  PDUR=plan.map(p=>({move:180,read:180,task:75,recall:180,end:1})[p.k]);
+  PDUR=plan.map(p=>({move:240,read:180,task:50,recall:180,end:1})[p.k]);
   idx=0;results=[];session={};runId++;
   try{navigator.wakeLock&&navigator.wakeLock.request('screen').catch(()=>{})}catch(e){}
   go();
@@ -268,14 +268,14 @@ async function workout(){
   head('Bewegung','');
   render(`<div class="card"><h3>Lade Übungen …</h3></div>`);
   const part=t=>shuf(GEX.filter(e=>e.t===t));
-  let exs=[...part('c').slice(0,2),...part('k').slice(0,2),...part('d').slice(0,2)],online=await probe(exs[0].g);
+  let exs=[...part('c').slice(0,4),...part('k').slice(0,4),...part('d').slice(0,4)],online=await probe(exs[0].g);
   if(rid!==runId)return;
-  if(!online)exs=shuf(EX).slice(0,6);
+  if(!online)exs=shuf(EX).slice(0,12);
   const FALL={c:'Marschieren',k:'Kniebeugen',d:'Reckdehnung'};let i=0;
   const show=()=>{
-    if(i>=6)return next();
+    if(i>=12)return next();
     const ex=exs[i],nx=exs[i+1];
-    head(`Übung ${i+1}/6`,'');vib(40);
+    head(`Übung ${i+1}/12`,'');vib(40);
     render(`<div class="card" style="text-align:center"><div id="fw" style="min-height:200px;display:flex;align-items:center;justify-content:center"></div><h2>${ex.n}</h2><p class="hint">${ex.d}</p>${ex.g?'<p class="hint" style="font-size:11px">Animationen: ExerciseDB</p>':''}</div>
     <p class="hint" style="text-align:center">${nx?'Danach: '+nx.n:'Letzte Übung!'}</p>`);
     const fw=$('#fw');
@@ -290,7 +290,7 @@ async function workout(){
       img.onerror=()=>fig(EX.find(e=>e.n===FALL[ex.t]));img.src=MEDIA_BASE+ex.g;fw.appendChild(img);
       if(nx&&nx.g)new Image().src=MEDIA_BASE+nx.g;
     }else fig(ex);
-    tick(30,()=>{i++;show()},i/6,1/6);
+    tick(20,()=>{i++;show()},i/12,1/12);
   };
   show();
 }
@@ -348,8 +348,8 @@ function recallPhase(){
 /* ---------- Aufgaben-Engine ---------- */
 function taskIntro(p){
   const T=p.T,lv=lvOf(T.id);
-  head(T.name,'1:15');progress(0);
-  render(`<div class="card"><span class="hint">Stufe ${lv+1}</span><h2>${T.name}</h2><p>${T.desc}</p></div><button class="pri" id="go">Los – 75 Sekunden</button>`);
+  head(T.name,'0:50');progress(0);
+  render(`<div class="card"><span class="hint">Stufe ${lv+1}</span><h2>${T.name}</h2><p>${T.desc}</p></div><button class="pri" id="go">Los – 50 Sekunden</button>`);
   $('#go').onclick=()=>runTask(T);
 }
 function runTask(T){
@@ -366,13 +366,13 @@ function runTask(T){
   };
   cleanups.push(()=>{c.alive=false;c.T.forEach(clearTimeout)});
   c.next();
-  head(T.name,'1:15');
-  tick(75,()=>{c.alive=false;c.T.forEach(clearTimeout);taskResult(T,c)});
+  head(T.name,'0:50');
+  tick(50,()=>{c.alive=false;c.T.forEach(clearTimeout);taskResult(T,c)});
 }
 function taskResult(T,c){
   const lv=lvOf(T.id),acc=c.n?c.ok/c.n:0;let nl=lv,msg='Stufe bleibt gleich';
-  if(c.n>=4&&acc>=0.85){nl=lv+1;msg='⬆ Stufe '+(nl+1)}
-  else if(c.n>=4&&acc<0.55&&lv>0){nl=lv-1;msg='⬇ Stufe '+(nl+1)}
+  if(c.n>=3&&acc>=0.85){nl=lv+1;msg='⬆ Stufe '+(nl+1)}
+  else if(c.n>=3&&acc<0.55&&lv>0){nl=lv-1;msg='⬇ Stufe '+(nl+1)}
   setLv(T.id,nl);results.push({id:T.id,name:T.name,ok:c.ok,n:c.n,lv:nl});
   render(`<div class="card" style="text-align:center"><h2>${T.name}</h2><div class="big">${c.ok}/${c.n}</div><p class="hint">richtig · ${Math.round(acc*100)} %</p><p><b>${msg}</b></p></div>
   <button class="pri" id="nx">Weiter</button>`);
