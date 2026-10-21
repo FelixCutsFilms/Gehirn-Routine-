@@ -23,17 +23,30 @@ jobs:
           mkdir -p www
           cp index.html manifest.json sw.js icon-192.png icon-512.png www/
       - run: npx cap add android
-      - name: Fester Signierschlüssel (damit Updates über die alte App gehen)
+      - name: Fester Signierschlüssel laden
         env:
           KS: ${{ secrets.ANDROID_KEYSTORE_B64 }}
         run: |
           if [ -n "$KS" ]; then
-            mkdir -p ~/.android
-            echo "$KS" | base64 -d > ~/.android/debug.keystore
-            echo "Fester Schlüssel aktiv"
+            echo "$KS" | tr -d ' \r\n' | base64 -d > "$GITHUB_WORKSPACE/signing.keystore"
+            FP=$(keytool -list -keystore "$GITHUB_WORKSPACE/signing.keystore" -storepass android 2>&1 | grep -E "SHA-256|rror" || true)
+            echo "::notice::Schlüssel geladen: $FP"
+            echo "USE_KS=1" >> "$GITHUB_ENV"
           else
             echo "::warning::Secret ANDROID_KEYSTORE_B64 fehlt - Zufallsschlüssel, die APK lässt sich nicht über eine ältere installieren"
           fi
+      - name: Schlüssel in Gradle eintragen
+        if: env.USE_KS == '1'
+        run: |
+          python3 - <<'PY'
+          import os
+          p='android/app/build.gradle'
+          s=open(p).read()
+          ks=os.environ['GITHUB_WORKSPACE']+'/signing.keystore'
+          blk="android {\n    signingConfigs {\n        debug {\n            storeFile file('%s')\n            storePassword 'android'\n            keyAlias 'androiddebugkey'\n            keyPassword 'android'\n        }\n    }\n" % ks
+          assert 'android {\n' in s
+          open(p,'w').write(s.replace('android {\n',blk,1))
+          PY
       - name: Versionsnummer hochzählen
         run: sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
       - run: npx capacitor-assets generate --android
@@ -44,7 +57,12 @@ jobs:
       - name: APK umbenennen
         run: |
           cp android/app/build/outputs/apk/debug/app-debug.apk gehirn-routine.apk
-          keytool -printcert -jarfile gehirn-routine.apk | grep "SHA256" || true
+          APKFP=$(keytool -printcert -jarfile gehirn-routine.apk | grep "SHA256")
+          echo "::notice::APK-Signatur: $APKFP"
+          if [ "$USE_KS" = "1" ]; then
+            KSFP=$(keytool -list -keystore "$GITHUB_WORKSPACE/signing.keystore" -storepass android | grep "SHA-256" | sed 's/.*: //')
+            echo "$APKFP" | grep -q "$KSFP" || { echo "::error::APK ist nicht mit dem festen Schlüssel signiert"; exit 1; }
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: gehirn-routine-apk
