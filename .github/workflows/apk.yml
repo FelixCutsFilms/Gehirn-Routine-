@@ -23,13 +23,28 @@ jobs:
           mkdir -p www
           cp index.html manifest.json sw.js icon-192.png icon-512.png www/
       - run: npx cap add android
+      - name: Fester Signierschlüssel (damit Updates über die alte App gehen)
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            mkdir -p ~/.android
+            echo "$KS" | base64 -d > ~/.android/debug.keystore
+            echo "Fester Schlüssel aktiv"
+          else
+            echo "::warning::Secret ANDROID_KEYSTORE_B64 fehlt - Zufallsschlüssel, die APK lässt sich nicht über eine ältere installieren"
+          fi
+      - name: Versionsnummer hochzählen
+        run: sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/; s/versionName \"1.0\"/versionName \"1.${{ github.run_number }}\"/" android/app/build.gradle
       - run: npx capacitor-assets generate --android
       - run: npx cap sync android
       - name: APK bauen
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
       - name: APK umbenennen
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk gehirn-routine.apk
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk gehirn-routine.apk
+          keytool -printcert -jarfile gehirn-routine.apk | grep "SHA256" || true
       - uses: actions/upload-artifact@v4
         with:
           name: gehirn-routine-apk
